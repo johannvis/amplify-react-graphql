@@ -2,8 +2,13 @@ import React, { useState, useEffect } from "react";
 import "./App.css";
 import "@aws-amplify/ui-react/styles.css";
 //import { API } from "aws-amplify";
-import { Amplify, Storage } from 'aws-amplify';
+// import { Amplify } from 'aws-amplify';
+// import Storage from '@aws-amplify/storage';
+import { Amplify } from 'aws-amplify';
 import { generateClient } from 'aws-amplify/api';
+import {uploadData } from 'aws-amplify/storage';
+import { getUrl } from 'aws-amplify/storage';
+import { remove } from 'aws-amplify/storage';
 import config from './amplifyconfiguration.json';
 import { createNote, updateNote, deleteNote } from './graphql/mutations';
 import { listNotes } from './graphql/queries';
@@ -22,6 +27,7 @@ import {
   deleteNote as deleteNoteMutation,
 } from "./graphql/mutations";
 
+
 Amplify.configure(config);
 
 const client = generateClient();
@@ -33,12 +39,22 @@ const App = ({ signOut }) => {
   }, []);
 
   async function fetchNotes() {
-    const apiData = await API.graphql({ query: listNotes });
+    const apiData = await client.graphql({ query: listNotes });
     const notesFromAPI = apiData.data.listNotes.items;
     await Promise.all(
       notesFromAPI.map(async (note) => {
         if (note.image) {
-          const url = await Storage.get(note.name);
+          const url = await //getUrl(note.name);
+          getUrl({
+            key: note.name,
+            options: {
+              accessLevel: 'guest' , // can be 'private', 'protected', or 'guest' but defaults to `guest`
+              targetIdentityId: 'XXXXXXX', // id of another user, if `accessLevel` is `guest`
+              validateObjectExistence: false,  // defaults to false
+              expiresIn: 20 // validity of the URL, in seconds. defaults to 900 (15 minutes) and maxes at 3600 (1 hour)
+              //useAccelerateEndpoint: true; // Whether to use accelerate endpoint.
+            },
+          });
           note.image = url;
         }
         return note;
@@ -56,8 +72,16 @@ const App = ({ signOut }) => {
       description: form.get("description"),
       image: image.name,
     };
-    if (!!data.image) await Storage.put(data.name, image);
-    await API.graphql({
+    if (!!data.image) await //uploadData(data.name, image);
+    uploadData({
+      key: data.name,
+      data: image,
+      options: {
+        accessLevel: 'guest' // defaults to `guest` but can be 'private' | 'protected' | 'guest'
+        
+      }
+    });
+    await client.graphql({
       query: createNoteMutation,
       variables: { input: data },
     });
@@ -69,8 +93,9 @@ const App = ({ signOut }) => {
   async function deleteNote({ id, name }) {
     const newNotes = notes.filter((note) => note.id !== id);
     setNotes(newNotes);
-    await Storage.remove(name);
-    await API.graphql({
+    await //remove(name);
+    remove({ key: name });
+    await client.graphql({
       query: deleteNoteMutation,
       variables: { input: { id } },
     });
